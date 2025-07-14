@@ -11,6 +11,10 @@ public class Movement : MonoBehaviour
     [SerializeField] private float jumpForce = 12f;
     [SerializeField] private float gravity = -24f;
 
+    [Header("Gravity Multipliers")]
+    [SerializeField] private float fallMultiplier = 2.5f;  // Added for better fall control
+    [SerializeField] private float lowJumpMultiplier = 2f; // Added for variable jump height
+
     [Header("Dash")]
     [SerializeField] private float dashSpeed = 30f;
     [SerializeField] private float dashDuration = 0.2f;
@@ -49,7 +53,7 @@ public class Movement : MonoBehaviour
     [SerializeField] private float parryMomentumDuration = 0.5f;
 
     private CharacterController controller;
-    private Vector3 velocity;
+    public Vector3 velocity;
     private Vector3 inputDir;
 
     private bool isSliding = false;
@@ -77,6 +81,7 @@ public class Movement : MonoBehaviour
 
     private Vector3 parryMomentumVelocity = Vector3.zero;
     private float parryMomentumTimer = 0f;
+
 
     void Start()
     {
@@ -285,27 +290,48 @@ public class Movement : MonoBehaviour
                     Vector3 desiredVelocity = inputDir * walkSpeed;
                     velocity.x = Mathf.MoveTowards(velocity.x, desiredVelocity.x, groundAcceleration * Time.deltaTime);
                     velocity.z = Mathf.MoveTowards(velocity.z, desiredVelocity.z, groundAcceleration * Time.deltaTime);
+
+                    // Remove the old velocity.y reset here (commented out)
+                    // if (velocity.y < 0)
+                    //    velocity.y = -2f; // <-- REMOVED to prevent slow fall when grounded
                 }
                 else
                 {
                     Vector3 desiredVelocity = inputDir * maxAirSpeed;
                     velocity.x = Mathf.MoveTowards(velocity.x, desiredVelocity.x, airAcceleration * Time.deltaTime);
                     velocity.z = Mathf.MoveTowards(velocity.z, desiredVelocity.z, airAcceleration * Time.deltaTime);
-                }
 
-                velocity.y += gravity * Time.deltaTime;
+                    // Apply better gravity multipliers for falling and low jumps:
+                    if (velocity.y < 0)
+                    {
+                        velocity.y += gravity * fallMultiplier * Time.deltaTime;
+                    }
+                    else if (velocity.y > 0 && !Input.GetButton("Jump"))
+                    {
+                        velocity.y += gravity * lowJumpMultiplier * Time.deltaTime;
+                    }
+                    else
+                    {
+                        velocity.y += gravity * Time.deltaTime;
+                    }
+                }
             }
         }
         else
         {
+            // Parry momentum active: apply normal gravity
             velocity.y += gravity * Time.deltaTime;
         }
 
         controller.Move(velocity * Time.deltaTime);
 
+        // Optional: slight downward force to help ground stick, but make it very small to avoid floatiness
         if (controller.isGrounded && velocity.y < 0)
-            velocity.y = -2f;
+        {
+            velocity.y = Mathf.Min(velocity.y, gravity * Time.deltaTime * 2f); // small downward force instead of fixed -2f
+        }
     }
+
     public void StartParryMomentum(Vector3 direction)
     {
         parryMomentumVelocity = direction.normalized;

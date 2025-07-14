@@ -35,13 +35,9 @@ public class PlayerCombat : MonoBehaviour
 
     private EnemyController enemy;
 
-    private bool weakpointActive = false;
-    private bool weakpointHittable = false;
-
     private Vector3 parryMomentumDirection = Vector3.zero;
     private float parryMomentumTimer = 0f;
 
-    // Parry window vars
     private bool parryWindowActive = false;
     private float parryWindowDuration = 1f;
     private float parryWindowTimer = 0f;
@@ -81,7 +77,6 @@ public class PlayerCombat : MonoBehaviour
         }
     }
 
-    // Called by enemy when it attacks the player - opens parry window
     public void OnEnemyAttack()
     {
         parryWindowActive = true;
@@ -195,17 +190,6 @@ public class PlayerCombat : MonoBehaviour
             enemy.TriggerParrySuccess();
 
             StartParryMomentum(transform.forward);
-
-            if (parryBoostActive)
-            {
-                weakpointActive = true;
-                weakpointHittable = true;
-            }
-            else
-            {
-                weakpointActive = false;
-                weakpointHittable = false;
-            }
         }
         else
         {
@@ -216,21 +200,16 @@ public class PlayerCombat : MonoBehaviour
 
     public void OnWeakpointHit()
     {
-        if (weakpointActive && weakpointHittable)
+        if (enemy != null && enemy.Weakpoints != null)
         {
-            weakpointHittable = false;
-            weakpointActive = false;
-
-            if (enemy != null && enemy.WeakpointScript != null)
+            foreach (var wp in enemy.Weakpoints)
             {
-                enemy.WeakpointScript.Hide();
+                wp.Hide();
             }
-
-            Debug.Log("Weakpoint Hit! Bonus damage applied.");
-
-            // Bonus damage when hitting weakpoint
-            enemy.TakeDamage(attackDamage * 2);
         }
+
+        Debug.Log("Weakpoint Hit! Bonus damage applied.");
+        enemy?.TakeDamage(attackDamage * 2);
     }
 
     private void StartParryMomentum(Vector3 direction)

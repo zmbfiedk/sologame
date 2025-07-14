@@ -4,8 +4,9 @@ using UnityEngine;
 public class EnemyController : MonoBehaviour
 {
     [Header("Weakpoint Settings")]
-    [SerializeField] private Transform weakpoint;
-    [SerializeField] private float baseWeakpointRevealTime = 1f; // parry window fixed to 1 second
+    [SerializeField] private Weakpoint[] weakpoints;
+    [SerializeField] private Transform[] weakpointPositions;
+    [SerializeField] private float baseWeakpointRevealTime = 1f;
     [SerializeField] private float weakpointMoveSpeed = 2f;
 
     [Header("Health Settings")]
@@ -13,7 +14,7 @@ public class EnemyController : MonoBehaviour
     private int currentHealth;
 
     [Header("Attack Settings")]
-    [SerializeField] private Collider attackHitbox; // assign this collider in inspector (trigger)
+    [SerializeField] private Collider attackHitbox;
     [SerializeField] private float attackCooldown = 3f;
     [SerializeField] private int attackDamage = 20;
 
@@ -29,22 +30,22 @@ public class EnemyController : MonoBehaviour
 
     private Transform player;
 
-    // Flash effect variables
     private Renderer enemyRenderer;
     private Color originalColor;
     private Coroutine flashCoroutine;
 
-    // Public property to access Weakpoint script
-    public Weakpoint WeakpointScript { get; private set; }
+    private bool attackParried = false; // <-- Track if current attack was parried
+
+    public Weakpoint[] Weakpoints => weakpoints;
 
     private void Start()
     {
         currentHealth = maxHealth;
 
-        if (weakpoint != null)
+        if (weakpoints != null)
         {
-            WeakpointScript = weakpoint.GetComponent<Weakpoint>();
-            weakpoint.gameObject.SetActive(false);
+            foreach (var wp in weakpoints)
+                wp.gameObject.SetActive(false);
         }
 
         if (attackHitbox != null)
@@ -59,18 +60,18 @@ public class EnemyController : MonoBehaviour
         attackTimer = attackCooldown;
     }
 
-    void Update()
+    private void Update()
     {
         if (weakpointActive)
         {
             weakpointTimer -= Time.deltaTime;
             if (weakpointTimer <= 0)
             {
-                HideWeakpoint();
+                HideWeakpoints();
             }
             else
             {
-                MoveWeakpoint();
+                MoveWeakpoints();
             }
         }
 
@@ -87,6 +88,8 @@ public class EnemyController : MonoBehaviour
         if (player == null)
             yield break;
 
+        attackParried = false; // Reset parry flag for new attack
+
         Vector3 directionToPlayer = player.position - transform.position;
         directionToPlayer.y = 0;
         if (directionToPlayer != Vector3.zero)
@@ -94,25 +97,30 @@ public class EnemyController : MonoBehaviour
 
         Debug.Log("Enemy attacking!");
 
-        // Notify player to open parry window
         PlayerCombat playerCombat = player.GetComponent<PlayerCombat>();
         if (playerCombat != null)
-        {
             playerCombat.OnEnemyAttack();
-        }
 
-        if (WeakpointScript != null)
-        {
-            WeakpointScript.Show(Color.yellow); // Yellow when attack window opens
-        }
-
-        // Start flashing yellow to indicate parry window
         StartFlash(Color.yellow);
 
         if (attackHitbox != null)
             attackHitbox.enabled = true;
 
         yield return new WaitForSeconds(0.5f);
+
+        if (!attackParried)  // Player failed to parry
+        {
+            PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
+            if (playerHealth != null)
+            {
+                playerHealth.TakeDamage(attackDamage);
+                Debug.Log("Player failed to parry and took damage!");
+            }
+        }
+        else
+        {
+            Debug.Log("Player parried the attack!");
+        }
 
         if (attackHitbox != null)
             attackHitbox.enabled = false;
@@ -133,16 +141,31 @@ public class EnemyController : MonoBehaviour
         }
     }
 
+    // Call this method when player successfully parries
+    public void NotifyParrySuccess()
+    {
+        attackParried = true;  // Mark attack as parried
+        TriggerParrySuccess();
+    }
+
     public void TriggerParrySuccess()
     {
         parryChainCount++;
 
-        if (WeakpointScript != null)
+        if (weakpoints != null && weakpoints.Length > 0)
         {
-            WeakpointScript.Show(Color.green); // Green on parry success
+            int index = Random.Range(0, weakpoints.Length);
+
+            // Move the weakpoint to a predefined position if set
+            if (weakpointPositions != null && weakpointPositions.Length > 0)
+            {
+                Transform targetPos = weakpointPositions[index % weakpointPositions.Length];
+                weakpoints[index].transform.position = targetPos.position;
+            }
+
+            weakpoints[index].Show(Color.green);
         }
 
-        // Start flashing green on parry success
         StartFlash(Color.green);
 
         weakpointActive = true;
@@ -154,21 +177,34 @@ public class EnemyController : MonoBehaviour
         parryChainCount = 0;
     }
 
-    private void HideWeakpoint()
+    private void HideWeakpoints()
     {
         weakpointActive = false;
 
-        if (WeakpointScript != null)
+        if (weakpoints != null)
         {
-            WeakpointScript.Hide();
+            foreach (var wp in weakpoints)
+                wp.Hide();
         }
     }
 
-    private void MoveWeakpoint()
+    private void MoveWeakpoints()
     {
-        Vector3 randomOffset = new Vector3(Mathf.Sin(Time.time), 0, Mathf.Cos(Time.time)) * 0.5f;
-        if (weakpoint != null)
-            weakpoint.localPosition = Vector3.Lerp(weakpoint.localPosition, randomOffset, Time.deltaTime * weakpointMoveSpeed);
+        if (weakpoints == null || weakpointPositions == null || weakpointPositions.Length == 0)
+            return;
+
+        foreach (var wp in weakpoints)
+        {
+            int index = System.Array.IndexOf(weakpoints, wp);
+            if (index >= 0 && index < weakpointPositions.Length)
+            {
+                wp.transform.position = Vector3.Lerp(
+                    wp.transform.position,
+                    weakpointPositions[index].position,
+                    Time.deltaTime * weakpointMoveSpeed
+                );
+            }
+        }
     }
 
     public void SetParryBoost(bool active)
@@ -205,7 +241,7 @@ public class EnemyController : MonoBehaviour
 
     private IEnumerator FlashCoroutine(Color flashColor)
     {
-        float flashDuration = 1f; // Duration of parry window
+        float flashDuration = 1f;
         float t = 0f;
         bool toggle = false;
 
@@ -217,7 +253,6 @@ public class EnemyController : MonoBehaviour
             t += 0.2f;
         }
 
-        // Reset color to original
         enemyRenderer.material.color = originalColor;
     }
 }
